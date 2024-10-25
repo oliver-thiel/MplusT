@@ -62,3 +62,38 @@ Before you run the program, ensure that all dependencies are installed. The prog
 * Pandas https://pandas.pydata.org/
 * SciPy https://scipy.org/
 
+## The output
+The program prints the output to the terminal. It looks like this:
+
+```
+Cronbach's alpha for factor1: 0.651
+Cronbach's alpha for factor2: 0.904
+-------------------------------------
+t-test for factor1 vs. factor2:
+
+Mean of factor1: 4.805, SD: 1.141; N = 339
+Mean of factor1* (for factor2 participants): 4.856, SD: 1.120; N = 195
+Mean of factor2: 4.560, SD: 1.106; N = 199
+
+Mean difference (factor1 - factor1*): -0.052
+t-test: t(532) = -0.511, p = 0.609
+Effect size: 0.05, very small effect
+
+Mean difference (factor2 - factor1): -0.290
+t-test: t(194) = -3.680, p = 0.000
+Effect size: 0.26, small effect
+-------------------------------------
+t-test for var1 vs. var2:
+
+Mean of var1: 4.652, SD: 1.161; N = 341
+Mean of var1* (for var2 participants): 4.727, SD: 1.137; N = 203
+Mean of var2: 4.492, SD: 1.201; N = 207
+
+Mean difference (var1 - var1*): -0.074
+t-test: t(542) = -0.729, p = 0.466
+Effect size: 0.06, very small effect
+
+Mean difference (var2 - var1): -0.241
+t-test: t(202) = -2.740, p = 0.007
+Effect size: 0.19, small effect
+```
