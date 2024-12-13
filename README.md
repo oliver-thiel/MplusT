@@ -1,5 +1,5 @@
 # MplusT
-MplusT is an app for researchers who use Mplus by Muthén and Muthén for data analysis. Mplus is great for many cases, but it does not calculate reliabilties and t-test. This Python app adds these features.
+MplusT is an app for researchers who use Mplus by Muthén and Muthén for data analysis. Mplus is great for many cases, but it does not calculate reliabilities and t-tests. This app adds these features.
 
 ## Purpose and features
 The app will be used in addition to Mplus. For more information about Mplus, see https://www.statmodel.com/index.shtml
