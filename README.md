@@ -1,16 +1,19 @@
 # MplusT
-MplusT is an app for researchers who use Mplus by Muthén and Muthén for data analysis. Mplus is great for many cases, but it does not calculate reliabilities and t-tests. This app adds these features.
+MplusT is an app for researchers who use Mplus by Muthén and Muthén for data analysis. Mplus is great for many cases but does not calculate reliabilities and t-tests. This app adds these features.
 
 ## Purpose and features
 The app will be used in addition to Mplus. For more information about Mplus, see https://www.statmodel.com/index.shtml
-It reads a Mplus input file and extracts information about the data and the tasks. Then, it reads the Mplus data file and calculates reliabilities (Cronbach's alpha) and t-tests.
+However, you do not need Mplus to run this application. It can be used independently to calculate reliabilities and t-tests from a dataset in CSV format.
+The application is built using the Beeware Toga library, which allows for cross-platform GUI development.
+It uses Pandas to handle data, regular expressions to parse Mplus input files, and SciPy to perform statistical tests.
+The application has a simple GUI with options to load data, calculate reliabilities, perform t-tests, and save the output. The output is displayed in a text box within the application.
 
 ## How to use it
 Prepare the data and the input file before you run the app.
 
 ### The Mplus data file
-The app uses the Pandas function pd.read_csv(data_file_path, sep=',', header=None, names=variables) to read the Mplus data. Therefore, you should ensure that the data file has the correct format. It should be a CSV file that uses a comma as the separator. The file should not contain a header. The variable names are provided in the Mplus input file.
-The path and filename of the data file are specified in the input file.
+The app uses the Pandas function pd.read_csv(data_file_path, sep=',', header=None, names=variables) to read the Mplus data. So, please make sure that the data file has the correct format. It should be a CSV file that uses a comma as the separator. The file should not contain a header. The variable names are provided in the Mplus input file.
+The path and filename of the data file are specified in the Mplus input file.
 
 ### The Mplus input file
 The Mplus input is a text file. The app reads the whole file but uses only a few parts. The other parts are ignored. You can choose if you want to use the whole Mplus input file or only the parts that the app needs. The app extracts information from the following sections:
@@ -19,14 +22,19 @@ The Mplus input is a text file. The app reads the whole file but uses only a few
 DATA:
   FILE IS "C:\Users\oth\Documents\Mplus\data.dat";
 ```
-This section provides the path and name of the Mplus data file.
+This section provides the path and name of the Mplus data file. Version 1.1 reads the file name correctly even if DATA: FILE IS is a single line. FILE = is not supported.
 
 ```
 VARIABLE:
   NAMES ARE var1 var2 var3
-            var4 var5;
+            var4 var5 var6 var7;
 ```
 This section provides the variable names. It may have several lines. The app reads all names until it reaches the semicolon.
+
+```
+  USEVARIABLES ARE var1-var3 var4 var5 var6;
+```
+This section defines which variables are used.
 
 ```
   MISSING ARE var1-var3(9) var4(99) var5(99);
@@ -34,16 +42,14 @@ This section provides the variable names. It may have several lines. The app rea
 This section defines the codes of the missing values.
 
 ```
-MODEL:  
-        factor1 BY var1 var2 var5; ! A latent variable
-        factor2 BY var3 var4; ! A second factor
+MODEL:  factor1 BY var1-var4; ! A latent variable
+        factor2 BY var3 var5 var6; ! A second factor
 ```
 This section provides information about the latent variables. The app MplusT will calculate Cronbach's alpha for each latent variable specified in this section.
 
 ```
-T-TESTS:
-        factor1 WITH factor2;
-        var1 WITH var2;
+T-TESTS: factor1 WITH factor2;
+         var1 WITH var2;
 ```
 This section does not belong to the original Mplus input file. It has to be added. It provides information about the t-tests that shall be conducted. The app can compare both latent and observed variables. For each pair of variables factor1 WITH factor2, it conducts two t-tests:
 1. It compares the mean of factor1 for all observed cases with the mean of factor1 for only those cases that have data in factor2.
@@ -52,7 +58,7 @@ This section does not belong to the original Mplus input file. It has to be adde
 For each t-test, it calculates the means *M*, standard deviations *SD*, sample size *N*, mean difference *&#916;M*, *t*-value, degrees of freedom *df*, significance level (*p*-value), and effect size (Cohen's *d*).
 
 ### Installing and running the app on Windows
-You can install the app under Windows by downloading the installer: https://oliver-thiel.info/MplusT-1.0.msi
+You can install the app under Windows by downloading the installer.
 
 After the app is installed, you start it like any Windows application.
 
@@ -80,8 +86,20 @@ Furthermore, you must specify the path of the input file. The default filename i
 The app prints the output to the terminal. It looks like this:
 
 ```
-Cronbach's alpha for factor1: 0.651
+Cronbach's alpha for factor1: 0.893
+Cronbach's alpha for item var1 removed: 0.878
+Cronbach's alpha for item var2 removed: 0.876
+Cronbach's alpha for item var3 removed: 0.870
+Cronbach's alpha for item var4 removed: 0.856
+Removing any item would not increase Cronbach's alpha.
+
 Cronbach's alpha for factor2: 0.904
+Cronbach's alpha for item var3 removed: 0.889
+Cronbach's alpha for item var5 removed: 0.911
+Cronbach's alpha for item var6 removed: 0.880
+Removing item var5 would increase Cronbach's alpha to 0.911
+
+
 -------------------------------------
 t-test for factor1 vs. factor2:
 
