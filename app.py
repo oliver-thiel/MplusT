@@ -1,5 +1,11 @@
 """
-This application is an extention to Mplus that adds the ability to calculate reliablities and t-tests.
+This application is an "extention" to Mplus that adds the ability to calculate reliablities and t-tests.
+However, you do not need Mplus to run this application. It can be used independently to calculate reliabilities
+and t-tests from a dataset in CSV format.
+The application is built using the Beeware Toga library, which allows for cross-platform GUI development.
+It uses Pandas to handle data, regular expressions to parse Mplus input files, and SciPy to perform statistical tests.
+The application has a simple GUI with options to load data, calculate reliabilities, perform t-tests,
+and save the output. The output is displayed in a text box within the application.
 """
 
 import toga
@@ -47,25 +53,64 @@ def read_mplus_inp(file_path: str):
 
         # Find the data file path (adjusted for "FILE IS" instead of "FILE =")
         if line.startswith('DATA:'):
-            data_file_line = next(line_iter).strip()  # Move to the next line after 'DATA:'
-            match = re.search(r'FILE\s+IS\s+"(.+?)";', data_file_line, re.IGNORECASE)
+            data_file_line = line[5:] # Remove 'DATA:'
+            if data_file_line == '':
+                data_file_line = next(line_iter, None)  # Move to the next line after 'DATA:'
+            if data_file_line is None: # Check for unexpected end of file
+                return data_file_path, variables, missing_values, model_dict, t_tests
+            match = re.search(r'FILE\s+IS\s+"(.+?)";', data_file_line.strip(), re.IGNORECASE)
             if match:
                 data_file_path = match.group(1).strip()
-            else:
-                return
+            else: # If no match found for data file path, return empty values and exit function early
+                return data_file_path, variables, missing_values, model_dict, t_tests
 
         # Find the variable names in the VARIABLES section
         if line.startswith('VARIABLE:'):
+            line = line[9:].strip()  # Remove 'VARIABLE:' and strip whitespace
             variable_lines = [] # Initialise list
             while True:
-                line = next(line_iter).strip()
                 if line.endswith(';'):
                     variable_lines.append(line[:-1])  # Exclude the trailing ';'
                     break
                 variable_lines.append(line)
+                line = next(line_iter, None)
+                if line is None:
+                    break
+                else:
+                    line = line.strip() # Remove leading/trailing whitespace from each line
+
             # Join the lines and split into variable names
             variables = ' '.join(variable_lines).split()
-            variables = variables[2:]
+            variables = variables[2:] # Remove the first two elements which are 'NAMES ARE'
+
+        # Find the used variables, handling multi-line input
+        if line.startswith('USEVARIABLES ARE '):
+            used_lines = []
+            while True:
+                line = line.strip() # Remove leading/trailing whitespace
+                if line.endswith(';'):
+                    used_lines.append(line[:-1])  # Exclude the trailing ';'
+                    break
+                used_lines.append(line)
+                line = next(line_iter, None)
+                if line is None:
+                    break
+
+            # Join the lines and parse the used variable specification
+            used_spec = ' '.join(used_lines).split()
+            used_spec = used_spec[2:] # Remove the first two elements which are 'USEVARIABLES ARE'
+
+            used_variables = [] # Handle ranges like bk1-be4
+            for used in used_spec:
+                if '-' in used:
+                    # Handle ranges like bk1-be4
+                    start_var, end_var = used.split('-')
+                    start_idx = variables.index(start_var)
+                    end_idx = variables.index(end_var)
+                    for var in variables[start_idx:end_idx+1]:
+                        used_variables.append(var)
+                else:
+                    used_variables.append(used)
 
         # Find the missing value specification, handling multi-line input
         if line.startswith('MISSING ARE '):
@@ -75,7 +120,11 @@ def read_mplus_inp(file_path: str):
                     missing_lines.append(line[:-1])  # Exclude the trailing ';'
                     break
                 missing_lines.append(line)
-                line = next(line_iter).strip()
+                line = next(line_iter, None)
+                if line is None:
+                    break
+                else:
+                    line = line.strip() # Remove leading/trailing whitespace
 
             # Join the lines and parse the missing values specification
             missing_spec = ' '.join(missing_lines)
@@ -86,42 +135,63 @@ def read_mplus_inp(file_path: str):
                 if '-' in var_range:
                     # Handle ranges like bk1-be4
                     start_var, end_var = var_range.split('-')
-                    start_idx = variables.index(start_var)
-                    end_idx = variables.index(end_var)
-                    for var in variables[start_idx:end_idx+1]:
+                    start_idx = used_variables.index(start_var)
+                    end_idx = used_variables.index(end_var)
+                    for var in used_variables[start_idx:end_idx+1]:
                         missing_values[var] = int(missing_code)
                 else:
                     missing_values[var_range] = int(missing_code)
 
         # Find the latent variable specifications, handling multi-line input
         if line.startswith('MODEL:'):
+            line = line[6:].strip()  # Remove 'MODEL:' and strip whitespaces
              # Regular expression pattern to match the lines of interest
-            latent_pattern = re.compile(r'(\w+)\s+BY\s+([\w\s]+);')
+            latent_pattern = re.compile(r'(\w+)\s+BY\s+([\w\s]+|\w+-\w+);')
             while True:
-                line = next(line_iter).strip()
-                if line == '':
-                    break
                 # Find all matches for the latent variables and their indicators
                 match = latent_pattern.search(line)
                 if match:
                     latent_variable = match.group(1)  # Latent variable name
                     indicators = match.group(2).split()  # List of indicators
-                    model_dict[latent_variable] = indicators
+                    corrected = [] # Handle ranges like bk1-be4
+                    for ind in indicators:
+                        if '-' in ind:
+                            # Handle ranges like bk1-be4
+                            start_var, end_var = ind.split('-')
+                            start_idx = used_variables.index(start_var)
+                            end_idx = used_variables.index(end_var)
+                            for var in used_variables[start_idx:end_idx+1]:
+                                corrected.append(var)
+                        else:
+                            corrected.append(ind)
+                    model_dict[latent_variable] = corrected
+                line = next(line_iter, None)
+                if line is None:
+                    break
+                else:
+                    line = line.strip() # Remove leading/trailing whitespace
+                if line == '':
+                    break
 
         # Find the latent variable pairs for t-tests, handling multi-line input
         if line.startswith('T-TESTS:'):
+            line = line[8:].strip() # Remove 'T-TESTS:' and strip whitespace
              # Regular expression pattern to match the lines of interest
             latent_pattern = re.compile(r'(\w+)\s+WITH\s+(\w+);')
             while True:
-                line = next(line_iter).strip()
-                if line == '':
-                    break
                 # Find all matches for the latent variables and their indicators
                 match = latent_pattern.search(line)
                 if match:
                     latent_variable_1 = match.group(1)  # First latent variable name
                     latent_variable_2 = match.group(2)  # Second latent variable name
                     t_tests.append((latent_variable_1,latent_variable_2))
+                line = next(line_iter, None)
+                if line is None:
+                    break
+                else:
+                    line = line.strip() # Remove leading/trailing whitespace
+                if line == '':
+                    break
 
     return data_file_path, variables, missing_values, model_dict, t_tests
 
@@ -305,11 +375,11 @@ def t_test_analysis(df: pd.DataFrame, items_a: list[str], items_b: list[str], na
     output += f't-test for {name_a} vs. {name_b}:\n\n'
     # 1. Mean and SD of latent variable A
     mean_a, sd_a, n_a = mean_sd(df, items_a)
-    output += f'Mean of {name_a}: {mean_a:.3f}, SD: {sd_a:.3f}; N = {n_a}'
+    output += f'Mean of {name_a}: {mean_a:.3f}, SD: {sd_a:.3f}; N = {n_a}\n'
 
     # 2. Mean and SD of latent variable A for students who have data in latent variable B
     mean_a_participants, sd_a_participants, n_a_participants = mean_sd_filtered(df, items_a, items_b)
-    output += f'Mean of {name_a}* (for {name_b} participants): {mean_a_participants:.3f}, SD: {sd_a_participants:.3f}; N = {n_a_participants}'
+    output += f'Mean of {name_a}* (for {name_b} participants): {mean_a_participants:.3f}, SD: {sd_a_participants:.3f}; N = {n_a_participants}\n'
     # 2.1 Pooled standard deviation
     pooled_sd = sqrt(((n_a - 1) * (sd_a ** 2) + (n_a_participants - 1) * (sd_a_participants ** 2)) / (n_a + n_a_participants - 2))
 
@@ -329,7 +399,7 @@ def t_test_analysis(df: pd.DataFrame, items_a: list[str], items_b: list[str], na
     output += f'Effect size: {effect_size_ind:.2f}, {interpret_cohens_d(effect_size_ind)} effect\n\n'
     output += f'Mean difference ({name_b} - {name_a}): {mean_diff:.3f}\n'
     output += f't-test: t({df_value}) = {t_stat:.3f}, p = {p_value:.3f}\n'
-    output += f'Effect size: {effect_size_paired:.2f}, {interpret_cohens_d(effect_size_paired)} effect\n'
+    output += f'Effect size: {effect_size_paired:.2f}, {interpret_cohens_d(effect_size_paired)} effect\n\n'
 
     return output
 
@@ -406,7 +476,6 @@ class MplusT(toga.App):
         #                               var1 WITH var2 becomes [["var1", "var2"]]
         data_file_path, variables, missing_values, model_dict, t_tests = read_mplus_inp(inp_file)
 
-
         # Check the result and show a dialog accordingly
         if data_file_path:
             await self.main_window.dialog(
@@ -424,10 +493,32 @@ class MplusT(toga.App):
             for latent_variable, indicators in model_dict.items():
                 latent_variable_data[latent_variable] = df[indicators]
 
+                alpha_values = [] # List of values to find maximum
+
                 # Calculate Cronbach's alpha for each latent variable 
                 alpha_value = cronbach_alpha(latent_variable_data[latent_variable])
+                alpha_values.append(alpha_value)  # Append alpha value to the list
 
                 self.output_window.value += f"Cronbach's alpha for {latent_variable}: {alpha_value:.3f}\n"
+                for indicator in indicators:
+                    without = latent_variable_data[latent_variable].drop(columns=[indicator])
+                    without_alpha = cronbach_alpha(without)  # Cronbach's alpha without the current item
+                    alpha_values.append(without_alpha)  # Append alpha value to the list
+
+                    self.output_window.value += f"Cronbach's alpha for item {indicator} removed: {without_alpha:.3f}\n"
+                
+                max_alpha_value = max(alpha_values)  # Find the maximum alpha value in the list
+                # Check if the maximum alpha value is not the original alpha value
+                if max_alpha_value != alpha_value:
+                    # Find the index of the maximum alpha value in the list
+                    max_alpha_index = alpha_values.index(max_alpha_value)
+                    # Get the indicator that was removed to get the maximum alpha value
+                    removed_indicator = indicators[max_alpha_index - 1]
+                    self.output_window.value += f"Removing item {removed_indicator} would increase Cronbach's alpha to {max_alpha_value:.3f}\n"
+                else: # If no item removal increases alpha, print this message
+                    self.output_window.value += "Removing any item would not increase Cronbach's alpha.\n"  
+
+                self.output_window.value += "\n"  # Add a newline for better readability
 
             # Loop through the list of t-test pairs and perform the tests
             for var_a, var_b in t_tests:
