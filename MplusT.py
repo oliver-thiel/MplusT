@@ -1,5 +1,6 @@
 import pandas as pd     # A Pandas dataframe is used for the data
 import re               # Regular expressions are used to read the Mplus input file
+import os
 from scipy import stats # SciPy is used to calculate the t-tests
 from math import sqrt   # The square root is used to calculate Cohen's d
 
@@ -19,8 +20,14 @@ def read_mplus_inp(file_path: str):
         dict{str : list[str]}: model_dict - A dictonary that associates each latent variable with its items.
         list[list[str]]: t_tests - A list of pairs of variable names
     """    
+    # Open the .inp file and read its content if it exsists. Otherwise return None and empty lists/dicts.
+    if not os.path.exists(file_path):
+        print(f"File '{file_path}' does not exist!")
+        return None, [], {}, {}, []
+    
     # Open the .inp file and read its content
     with open(file_path, 'r') as f:
+        print(f'============ Reading input file: {file_path} ============')
         lines = f.readlines()
 
     # Convert the list of lines into an iterator
@@ -48,6 +55,7 @@ def read_mplus_inp(file_path: str):
             if match:
                 data_file_path = match.group(1).strip()
             else: # If no match found for data file path, return empty values and exit function early
+                print('ERROR: No data file path found in DATA section.')
                 return data_file_path, variables, missing_values, model_dict, t_tests
 
         # Find the variable names in the VARIABLES section
@@ -91,8 +99,16 @@ def read_mplus_inp(file_path: str):
                 if '-' in used:
                     # Handle ranges like bk1-be4
                     start_var, end_var = used.split('-')
-                    start_idx = variables.index(start_var)
-                    end_idx = variables.index(end_var)
+                    try:
+                        start_idx = variables.index(start_var)
+                    except ValueError:
+                        print(f'ERROR: Variable {start_var} not found in the list of variables.')
+                        continue
+                    try:
+                        end_idx = variables.index(end_var)
+                    except ValueError:
+                        print(f'ERROR: Variable {end_var} not found in the list of variables.')
+                        continue
                     for var in variables[start_idx:end_idx+1]:
                         used_variables.append(var)
                 else:
@@ -121,8 +137,16 @@ def read_mplus_inp(file_path: str):
                 if '-' in var_range:
                     # Handle ranges like bk1-be4
                     start_var, end_var = var_range.split('-')
-                    start_idx = used_variables.index(start_var)
-                    end_idx = used_variables.index(end_var)
+                    try:
+                        start_idx = used_variables.index(start_var)
+                    except ValueError:
+                        print(f'ERROR: Variable {start_var} not found in the list of used variables.')
+                        continue
+                    try:
+                        end_idx = used_variables.index(end_var)
+                    except ValueError:
+                        print(f'ERROR: Variable {end_var} not found in the list of used variables.')
+                        continue
                     for var in used_variables[start_idx:end_idx+1]:
                         missing_values[var] = int(missing_code)
                 else:
@@ -144,8 +168,16 @@ def read_mplus_inp(file_path: str):
                         if '-' in ind:
                             # Handle ranges like bk1-be4
                             start_var, end_var = ind.split('-')
-                            start_idx = used_variables.index(start_var)
-                            end_idx = used_variables.index(end_var)
+                            try:
+                                start_idx = used_variables.index(start_var)
+                            except ValueError:
+                                print(f'ERROR: Variable {start_var} not found in the list of used variables.')
+                                continue
+                            try:
+                                end_idx = used_variables.index(end_var)
+                            except ValueError:
+                                print(f'ERROR: Variable {end_var} not found in the list of used variables.')
+                                continue
                             for var in used_variables[start_idx:end_idx+1]:
                                 corrected.append(var)
                         else:
