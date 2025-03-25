@@ -11,6 +11,7 @@ and save the output. The output is displayed in a text box within the applicatio
 import toga
 from toga.style import Pack
 from toga.style.pack import COLUMN
+import os
 import pandas as pd     # A Pandas dataframe is used for the data
 import re               # Regular expressions are used to read the Mplus input file
 from scipy import stats # SciPy is used to calculate the t-tests
@@ -32,9 +33,15 @@ def read_mplus_inp(file_path: str):
                                           Defaults to {} if there are specicfic codes for missing values. 
         dict{str : list[str]}: model_dict - A dictonary that associates each latent variable with its items.
         list[list[str]]: t_tests - A list of pairs of variable names
+        str: output - A string that contains information about the progress.
     """    
-    # Open the .inp file and read its content
+    # Open the .inp file and read its content if it exsists. Otherwise return None and empty lists/dicts.
+    if not os.path.exists(file_path):
+        output: str = f"File '{file_path}' does not exist!\n"
+        return None, [], {}, {}, [], output
+    
     with open(file_path, 'r') as f:
+        output = f'============ Reading input file: {file_path} ============\n'
         lines = f.readlines()
 
     # Convert the list of lines into an iterator
@@ -62,7 +69,8 @@ def read_mplus_inp(file_path: str):
             if match:
                 data_file_path = match.group(1).strip()
             else: # If no match found for data file path, return empty values and exit function early
-                return data_file_path, variables, missing_values, model_dict, t_tests
+                output += 'ERROR: No data file path found in DATA section.\n'
+                return data_file_path, variables, missing_values, model_dict, t_tests, output
 
         # Find the variable names in the VARIABLES section
         if line.startswith('VARIABLE:'):
@@ -81,6 +89,9 @@ def read_mplus_inp(file_path: str):
 
             # Join the lines and split into variable names
             variables = ' '.join(variable_lines).split()
+            output += '\n\n'
+            for variable in variables:
+                output += f'{variable} '
             variables = variables[2:] # Remove the first two elements which are 'NAMES ARE'
 
         # Find the used variables, handling multi-line input
@@ -105,12 +116,24 @@ def read_mplus_inp(file_path: str):
                 if '-' in used:
                     # Handle ranges like bk1-be4
                     start_var, end_var = used.split('-')
-                    start_idx = variables.index(start_var)
-                    end_idx = variables.index(end_var)
+                    try:
+                        start_idx = variables.index(start_var)
+                    except ValueError:
+                        output += f'\n\nERROR: Variable {start_var} not found in the list of variables.'
+                        continue
+                    try:
+                        end_idx = variables.index(end_var)
+                    except ValueError:
+                        output += f'\n\nERROR: Variable {end_var} not found in the list of variables.'
+                        continue
                     for var in variables[start_idx:end_idx+1]:
                         used_variables.append(var)
                 else:
                     used_variables.append(used)
+
+            output += '\n\nUSED ARE '
+            for variable in used_variables:
+                output += f'{variable} '
 
         # Find the missing value specification, handling multi-line input
         if line.startswith('MISSING ARE '):
@@ -135,12 +158,25 @@ def read_mplus_inp(file_path: str):
                 if '-' in var_range:
                     # Handle ranges like bk1-be4
                     start_var, end_var = var_range.split('-')
-                    start_idx = used_variables.index(start_var)
-                    end_idx = used_variables.index(end_var)
+                    try:
+                        start_idx = used_variables.index(start_var)
+                    except ValueError:
+                        output += f'\n\nERROR: Variable {start_var} not found in the list of used variables.'
+                        continue
+                    try:
+                        end_idx = used_variables.index(end_var)
+                    except ValueError:
+                        output += f'\n\nERROR: Variable {end_var} not found in the list of used variables.'
+                        continue
                     for var in used_variables[start_idx:end_idx+1]:
                         missing_values[var] = int(missing_code)
                 else:
                     missing_values[var_range] = int(missing_code)
+
+            output += f'\n\nMISSING VALUES: '
+            for variable in missing_values:
+                output += f'{variable}({missing_values[variable]}) '
+
 
         # Find the latent variable specifications, handling multi-line input
         if line.startswith('MODEL:'):
@@ -158,8 +194,16 @@ def read_mplus_inp(file_path: str):
                         if '-' in ind:
                             # Handle ranges like bk1-be4
                             start_var, end_var = ind.split('-')
-                            start_idx = used_variables.index(start_var)
-                            end_idx = used_variables.index(end_var)
+                            try:
+                                start_idx = used_variables.index(start_var)
+                            except ValueError:
+                                output += f'\n\nERROR: Variable {start_var} not found in the list of used variables.'
+                                continue
+                            try:
+                                end_idx = used_variables.index(end_var)
+                            except ValueError:
+                                output += f'\n\nERROR: Variable {end_var} not found in the list of used variables.'
+                                continue
                             for var in used_variables[start_idx:end_idx+1]:
                                 corrected.append(var)
                         else:
@@ -193,7 +237,7 @@ def read_mplus_inp(file_path: str):
                 if line == '':
                     break
 
-    return data_file_path, variables, missing_values, model_dict, t_tests
+    return data_file_path, variables, missing_values, model_dict, t_tests, output
 
 
 def read_mplus_data(data_file_path: str, variables: list[str], missing_values: dict|None=None):
@@ -210,6 +254,10 @@ def read_mplus_data(data_file_path: str, variables: list[str], missing_values: d
         pd.dataframe: df - A Pandas data frame the contains all data
     """    
     # Read the .dat file into a DataFrame using a comma as the delimiter
+    if not os.path.exists(data_file_path):
+        return pd.DataFrame()  # Return an empty DataFrame if the file does not exist
+
+
     df = pd.read_csv(data_file_path, sep=',', header=None, names=variables)
 
     # Handle missing values if specified
@@ -281,7 +329,7 @@ def mean_sd_filtered(df: pd.DataFrame, items: list[str], filter: list[str]):
         int: The number of participants
     """    
     # Only consider rows where there are no missing values in the filter
-    df_clean = df.dropna(subset=filter)
+    df_clean = df.dropna(subset=items + filter)
     return mean_sd(df_clean, items)
 
 
@@ -474,67 +522,79 @@ class MplusT(toga.App):
         #                       latent_var BY var1 var2 var3 becomes {"latent_var": ["var1", "var2", "var3"]}
         # 5. t_tests (list(list(str))): List of pairs of variable names for the t-test from the T-TESTS: section of the input file
         #                               var1 WITH var2 becomes [["var1", "var2"]]
-        data_file_path, variables, missing_values, model_dict, t_tests = read_mplus_inp(inp_file)
+        data_file_path, variables, missing_values, model_dict, t_tests, output = read_mplus_inp(inp_file)
+        self.output_window.value += output + '\n'
 
         # Check the result and show a dialog accordingly
-        if data_file_path:
-            await self.main_window.dialog(
-                toga.InfoDialog('File Selected', f'The data file is: {data_file_path}')
-            )
-
-            # Load the data file based on the extracted info
-            df = read_mplus_data(data_file_path, variables, missing_values)
-
-            # DOING THE ANALYSES
-            # Create a dictionary to hold subsets of the original DataFrame for each latent variable
-            latent_variable_data = {}
-
-            # Loop through the dictionary of latent variables to create subsets and calculate reliablities
-            for latent_variable, indicators in model_dict.items():
-                latent_variable_data[latent_variable] = df[indicators]
-
-                alpha_values = [] # List of values to find maximum
-
-                # Calculate Cronbach's alpha for each latent variable 
-                alpha_value = cronbach_alpha(latent_variable_data[latent_variable])
-                alpha_values.append(alpha_value)  # Append alpha value to the list
-
-                self.output_window.value += f"Cronbach's alpha for {latent_variable}: {alpha_value:.3f}\n"
-                for indicator in indicators:
-                    without = latent_variable_data[latent_variable].drop(columns=[indicator])
-                    without_alpha = cronbach_alpha(without)  # Cronbach's alpha without the current item
-                    alpha_values.append(without_alpha)  # Append alpha value to the list
-
-                    self.output_window.value += f"Cronbach's alpha for item {indicator} removed: {without_alpha:.3f}\n"
-                
-                max_alpha_value = max(alpha_values)  # Find the maximum alpha value in the list
-                # Check if the maximum alpha value is not the original alpha value
-                if max_alpha_value != alpha_value:
-                    # Find the index of the maximum alpha value in the list
-                    max_alpha_index = alpha_values.index(max_alpha_value)
-                    # Get the indicator that was removed to get the maximum alpha value
-                    removed_indicator = indicators[max_alpha_index - 1]
-                    self.output_window.value += f"Removing item {removed_indicator} would increase Cronbach's alpha to {max_alpha_value:.3f}\n"
-                else: # If no item removal increases alpha, print this message
-                    self.output_window.value += "Removing any item would not increase Cronbach's alpha.\n"  
-
-                self.output_window.value += "\n"  # Add a newline for better readability
-
-            # Loop through the list of t-test pairs and perform the tests
-            for var_a, var_b in t_tests:
-                if var_a in model_dict:
-                    start_items = model_dict[var_a]
-                else:
-                    start_items = [var_a]
-                if var_b in model_dict:
-                    end_items = model_dict[var_b]
-                else:
-                    end_items = [var_b]
-                self.output_window.value += t_test_analysis(df, start_items, end_items, var_a, var_b)
-        else:
+        if not data_file_path:
+            self.output_window.value += '=== ERROR: Failed to load data file. ===\n'
             await self.main_window.dialog(
                 toga.InfoDialog('No Data File Found', 'Data file path not found. Please check the input file format.')
             )
+            return
+        
+        await self.main_window.dialog(
+            toga.InfoDialog('File Selected', f'The data file is: {data_file_path}')
+        )
+
+        # Load the data file based on the extracted info
+        df = read_mplus_data(data_file_path, variables, missing_values)
+        if df.empty:
+            self.output_window.value += '============ ERROR: Failed to load data file. ============\n'
+            await self.main_window.dialog(
+                toga.InfoDialog('No Data File Found', 'Data file path not found. Please check the input file format.')
+            )
+            return
+        self.output_window.value += f'\n\n============ Reading data file: {data_file_path} ============\n'
+        self.output_window.value += 'Starting analysis...\n\n'
+
+        # DOING THE ANALYSES
+        # Create a dictionary to hold subsets of the original DataFrame for each latent variable
+        latent_variable_data = {}
+
+        # Loop through the dictionary of latent variables to create subsets and calculate reliablities
+        for latent_variable, indicators in model_dict.items():
+            latent_variable_data[latent_variable] = df[indicators]
+
+            alpha_values = [] # List of values to find maximum
+
+            # Calculate Cronbach's alpha for each latent variable 
+            alpha_value = cronbach_alpha(latent_variable_data[latent_variable])
+            alpha_values.append(alpha_value)  # Append alpha value to the list
+
+            self.output_window.value += f"Cronbach's alpha for {latent_variable}: {alpha_value:.3f}\n"
+            for indicator in indicators:
+                without = latent_variable_data[latent_variable].drop(columns=[indicator])
+                without_alpha = cronbach_alpha(without)  # Cronbach's alpha without the current item
+                alpha_values.append(without_alpha)  # Append alpha value to the list
+
+                self.output_window.value += f"Cronbach's alpha for item {indicator} removed: {without_alpha:.3f}\n"
+                
+            max_alpha_value = max(alpha_values)  # Find the maximum alpha value in the list
+            # Check if the maximum alpha value is not the original alpha value
+            if max_alpha_value != alpha_value:
+                # Find the index of the maximum alpha value in the list
+                max_alpha_index = alpha_values.index(max_alpha_value)
+                # Get the indicator that was removed to get the maximum alpha value
+                removed_indicator = indicators[max_alpha_index - 1]
+                self.output_window.value += f"Removing item {removed_indicator} would increase Cronbach's alpha to {max_alpha_value:.3f}\n"
+            else: # If no item removal increases alpha, print this message
+                self.output_window.value += "Removing any item would not increase Cronbach's alpha.\n"  
+
+            self.output_window.value += "\n"  # Add a newline for better readability
+
+        # Loop through the list of t-test pairs and perform the tests
+        for var_a, var_b in t_tests:
+            if var_a in model_dict:
+                start_items = model_dict[var_a]
+            else:
+                start_items = [var_a]
+            if var_b in model_dict:
+                end_items = model_dict[var_b]
+            else:
+                end_items = [var_b]
+            self.output_window.value += t_test_analysis(df, start_items, end_items, var_a, var_b)
+
 
     async def save_to_file(self, widget=None):
         """_summary_
