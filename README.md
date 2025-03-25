@@ -22,24 +22,24 @@ The Mplus input is a text file. The app reads the whole file but uses only a few
 DATA:
   FILE IS "C:\Users\oth\Documents\Mplus\data.dat";
 ```
-This section provides the path and name of the Mplus data file. Version 1.1 reads the file name correctly even if DATA: FILE IS is a single line. FILE = is not supported.
+This section provides the path and name of the Mplus data file. Version 1.2 reads the file name correctly even if DATA: FILE IS is a single line. FILE = is not supported.
 
 ```
 VARIABLE:
   NAMES ARE var1 var2 var3
             var4 var5 var6 var7;
 ```
-This section provides the variable names. It may have several lines. The app reads all names until it reaches the semicolon.
+This section provides the variable names. It may have several lines. Version 1.2 reads the file name correctly even if VARIABLE: NAMES ARE is a single line. The app reads all names until it reaches the semicolon. NAMES = is not supported.
 
 ```
   USEVARIABLES ARE var1-var3 var4 var5 var6;
 ```
-This section defines which variables are used.
+This section defines which variables are used. USEVARIABLES = is not supported. All used variables must be in the variable list. A range like var1-var3 means that all variables from the first to the last in the range will be used: var1, var2, and var3. 
 
 ```
   MISSING ARE var1-var3(9) var4(99) var5(99);
 ```
-This section defines the codes of the missing values.
+This section defines the codes of the missing values. MISSING = is not supported. All variables with missing values must be in the list of used variables. A range like var1-var3(9) means that all variables from the first to the last in the range will have the same codes: var1(9), var2(9), and var3(9).
 
 ```
 MODEL:  factor1 BY var1-var4; ! A latent variable
